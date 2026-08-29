@@ -1,3 +1,5 @@
+import { SessionType, Timeframe, AssetClass, QualityStatus } from './types';
+
 /**
  * V2.0-006: Provider Capability Contract
  */
@@ -59,6 +61,6 @@ export interface CanonicalCandle {
     quality_score: number;
     
     // V2.0-015: Market Session Data Semantics
-    session_type?: 'ATO' | 'CONTINUOUS' | 'LUNCH' | 'ATC' | 'NEGOTIATED';
+    session_type?: SessionType;
     is_auction?: boolean;
 }
