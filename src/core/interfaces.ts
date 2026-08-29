@@ -63,4 +63,7 @@ export interface CanonicalCandle {
     // V2.0-015: Market Session Data Semantics
     session_type?: SessionType;
     is_auction?: boolean;
+
+    // V2.0-010: Attached Studies / Indicator snapshot from Provider
+    indicators?: Record<string, any>;
 }
