@@ -1,0 +1,12 @@
+{
+  "version": "2026-08",
+  "universe": "VN30",
+  "symbols": [
+    "HOSE:FPT", "HOSE:MWG", "HOSE:TCB", "HOSE:HPG", "HOSE:VHM", 
+    "HOSE:VIC", "HOSE:VCB", "HOSE:SSI", "HOSE:VNM", "HOSE:VPB",
+    "HOSE:MBB", "HOSE:STB", "HOSE:VRE", "HOSE:MSN", "HOSE:ACB",
+    "HOSE:CTG", "HOSE:BID", "HOSE:VIB", "HOSE:HDB", "HOSE:SSB",
+    "HOSE:SHB", "HOSE:TPB", "HOSE:GVR", "HOSE:POW", "HOSE:PLX",
+    "HOSE:GAS", "HOSE:SAB", "HOSE:VJC", "HOSE:BIV", "HOSE:KDH"
+  ]
+}
