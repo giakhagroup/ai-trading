@@ -27,7 +27,7 @@ async function runResilienceE2E() {
         console.log('Subscribed to HOSE:FPT');
 
         // BIV is known to trigger "invalid symbol" and "resolve error"
-        await provider.subscribe('HOSE:BIV', '1H', () => {});
+        await provider.subscribe('HOSE:BIV', '1H', () => { });
         console.log('Subscribed to HOSE:BIV (expected INVALID_SYMBOL)');
 
         // Wait for connections to establish and errors to return
@@ -42,7 +42,7 @@ async function runResilienceE2E() {
         assert.strictEqual(registry.getState('HOSE:FPT'), SymbolState.ACTIVE, 'FPT should be ACTIVE');
         assert.ok(fptEvents > 0 || (provider as any).state === ConnectionState.CONNECTED, 'FPT should be receiving events or at least be CONNECTED');
         assert.strictEqual((provider as any).state, ConnectionState.CONNECTED, 'Socket MUST survive invalid symbol');
-        
+
         console.log('✅ Invalid symbol isolated. Socket survived.');
 
         // Force a network disconnect
@@ -58,7 +58,7 @@ async function runResilienceE2E() {
 
         assert.strictEqual((provider as any).state, ConnectionState.CONNECTED, 'Provider should have reconnected successfully');
         assert.strictEqual(registry.isQuarantined('HOSE:BIV'), true, 'BIV should still be QUARANTINED');
-        
+
         // Active sessions should only be 1 (FPT) because BIV was skipped during RESTORING
         assert.strictEqual(metrics2.active_sessions, 1, 'Only FPT should be active');
         assert.ok(metrics2.reconnects > 0, 'Should have triggered reconnect logic');
