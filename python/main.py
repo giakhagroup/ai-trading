@@ -3,9 +3,16 @@ from fastapi import FastAPI, HTTPException
 from typing import Dict, Any, List
 import logging
 
-from models import CanonicalCandle, CandidateSignal, ValidatedSignal, RejectedSignal
-from strategies.rsi_breakout import RSIBreakoutStrategy
-from risk.risk_engine import RiskEngine
+from models import CanonicalCandle, CandidateSignal, ValidatedSignal, RejectedSignal, SessionType
+from engine.mtf_manager import MTFManager
+from engine.scanner.market_scanner import MarketScanner
+from engine.scanner.scanner_types import ScanResult
+from alert.outbox_models import OutboxRepository, AlertEvent
+from alert.alert_outbox_worker import AlertOutboxWorker
+from alert.telegram_adapter import TelegramAdapter
+from alert.rate_limiter import RateLimiter
+import threading
+import time
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("QuantEngine")
@@ -13,13 +20,21 @@ logger = logging.getLogger("QuantEngine")
 app = FastAPI(title="AI Trading Python Quant & Risk Engine", version="2.0.0")
 
 # Initialize Engine Components
-strategies = [RSIBreakoutStrategy(rsi_oversold=35.0, rsi_overbought=70.0)]
-risk_engine = RiskEngine(min_rr=1.5, allow_lunch_trades=False)
+mtf_managers: Dict[str, MTFManager] = {}
+scanner = MarketScanner(mtf_managers=mtf_managers)
+outbox_repo = OutboxRepository(db_path="data/outbox.db")
+telegram_adapter = TelegramAdapter()
+rate_limiter = RateLimiter()
 
-# In-memory signal audit log
-candidate_signals: List[CandidateSignal] = []
-validated_signals: List[ValidatedSignal] = []
-rejected_signals: List[RejectedSignal] = []
+outbox_worker = AlertOutboxWorker(
+    repository=outbox_repo,
+    adapter=telegram_adapter,
+    rate_limiter=rate_limiter
+)
+
+# Start outbox worker in a background thread
+worker_thread = threading.Thread(target=outbox_worker.start, daemon=True)
+worker_thread.start()
 
 @app.get("/health")
 def health():
@@ -43,36 +58,48 @@ def on_candle_event(candle: CanonicalCandle):
         "rejected": []
     }
 
-    # 1. Run through Strategies
-    for strategy in strategies:
-        candidate = strategy.evaluate(candle)
-        if candidate:
-            logger.info(f"Generated Candidate Signal: {candidate.signal_id} by {strategy.name} on {candidate.symbol}")
-            candidate_signals.append(candidate)
-            results["candidates"].append(candidate.model_dump())
+    symbol = candle.provider_symbol
+    
+    # 1. Update MTF Manager
+    if symbol not in mtf_managers:
+        mtf_managers[symbol] = MTFManager(symbol=symbol)
+    
+    mtf_managers[symbol].on_candle(candle)
 
-            # 2. Evaluate via Risk Engine
-            session = candle.session_type or SessionType.CONTINUOUS
-            decision = risk_engine.validate(candidate, current_session=session)
-
-            if isinstance(decision, ValidatedSignal):
-                logger.info(f"✅ VALIDATED Signal: {candidate.signal_id} (R:R={decision.risk_reward_ratio})")
-                validated_signals.append(decision)
-                results["validated"].append(decision.model_dump())
-            else:
-                logger.warning(f"❌ REJECTED Signal: {candidate.signal_id} - Reasons: {decision.rejection_reasons}")
-                rejected_signals.append(decision)
-                results["rejected"].append(decision.model_dump())
-
+    # 2. Trigger Scan if candle is closed (Rollover)
+    if candle.is_closed:
+        logger.info(f"Candle closed for {symbol}, triggering Market Scanner...")
+        scan_results = scanner.scan(as_of_timestamp=candle.source_timestamp, timeframe=candle.timeframe)
+        
+        logger.info(f"Scanner produced {len(scan_results)} results.")
+        for res in scan_results:
+            logger.info(f"Scanner result for {res.symbol}: Score={res.score}, Trend={res.trend}")
+            # Simple threshold to trigger alert
+            if res.score >= 70:
+                alert_id = f"ALERT-{res.symbol}-{candle.source_timestamp}"
+                # The chat_id should be fetched from config/env, here we use a dummy or predefined one
+                chat_id = "-100203002"  # Mock or real chat_id here
+                
+                alert_event = AlertEvent(
+                    signal_id=alert_id,
+                    destination=chat_id,
+                    payload=res.model_dump(),
+                    created_at=int(time.time())
+                )
+                added = outbox_repo.add_event(alert_event)
+                if added:
+                    logger.info(f"Enqueued High-Score Scanner Alert for {res.symbol} (Score: {res.score})")
+                results["validated"].append(res.model_dump())
+    
     return results
 
 @app.get("/signals/validated")
 def get_validated_signals():
-    return validated_signals
+    return []
 
 @app.get("/signals/rejected")
 def get_rejected_signals():
-    return rejected_signals
+    return []
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

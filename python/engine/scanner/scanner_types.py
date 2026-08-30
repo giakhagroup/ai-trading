@@ -3,6 +3,7 @@ from typing import List, Optional
 
 class ScanResult(BaseModel):
     symbol: str
+    correlation_id: str
     score: float = Field(..., ge=0, le=100)
     trend: str  # "UPTREND", "DOWNTREND", "SIDEWAYS", "UNKNOWN"
     momentum: float  # e.g., RSI value

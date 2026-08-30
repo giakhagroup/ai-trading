@@ -31,20 +31,25 @@ class MarketScanner:
             
             # Use as_of_timestamp to prevent look-ahead bias
             inds_1h = manager.get_indicators(timeframe, as_of_timestamp=as_of_timestamp)
+            print(f"[DEBUG Scanner] Symbol {symbol} inds_1h: {inds_1h}")
             if not inds_1h or not inds_1h.get("close"):
+                print(f"[DEBUG Scanner] Skipping {symbol} because close is missing")
                 continue
 
             inds_15m = manager.get_indicators("15", as_of_timestamp=as_of_timestamp)
+            correlation_id = inds_1h.get("event_id", f"{symbol}-unknown")
 
-            result = self._evaluate_symbol(symbol, inds_1h, inds_15m, manager, as_of_timestamp)
+            result = self._evaluate_symbol(symbol, inds_1h, inds_15m, manager, as_of_timestamp, correlation_id)
             if result:
                 results.append(result)
+            else:
+                print(f"[DEBUG Scanner] _evaluate_symbol returned None for {symbol}")
 
         # Deterministic Ranking: score DESC, symbol ASC
         results.sort(key=lambda x: (-x.score, x.symbol))
         return results
 
-    def _evaluate_symbol(self, symbol: str, inds_1h: dict, inds_15m: dict, manager: MTFManager, as_of_timestamp: Optional[int]) -> Optional[ScanResult]:
+    def _evaluate_symbol(self, symbol: str, inds_1h: dict, inds_15m: dict, manager: MTFManager, as_of_timestamp: Optional[int], correlation_id: str) -> Optional[ScanResult]:
         close = inds_1h.get("close")
         vol = inds_1h.get("volume", 0)
         ema20 = inds_1h.get("ema20")
@@ -105,6 +110,7 @@ class MarketScanner:
 
         return ScanResult(
             symbol=symbol,
+            correlation_id=correlation_id,
             score=round(total_score, 2),
             trend=trend_state,
             momentum=round(rsi, 2),

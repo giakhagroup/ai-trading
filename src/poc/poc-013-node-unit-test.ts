@@ -20,8 +20,21 @@ class MockMarketDataProvider implements MarketDataProvider {
     };
 
     public connected = false;
-    public async connect(): Promise<void> { this.connected = true; }
-    public async disconnect(): Promise<void> { this.connected = false; }
+    public async connect(): Promise<void> {
+        this.connected = true;
+    }
+
+    async disconnect(): Promise<void> {
+        this.connected = false;
+    }
+    
+    async subscribe(symbol: string, timeframe: string, onUpdate: (candle: CanonicalCandle) => void): Promise<void> {
+        // Mock subscribe
+    }
+    
+    unsubscribe(symbol: string, timeframe: string): void {
+        // Mock unsubscribe
+    }
 }
 
 async function runNodeUnitTests() {

@@ -9,6 +9,13 @@ const logger = pino({
     }
 });
 
+interface SubscriptionConfig {
+    symbol: string;
+    timeframe: string;
+    onUpdate: (candle: CanonicalCandle) => void;
+    indicatorsToAttach: string[];
+}
+
 export class TradingViewProvider implements MarketDataProvider {
     public name = 'TradingView';
     public capabilities: ProviderCapabilities = {
@@ -26,10 +33,18 @@ export class TradingViewProvider implements MarketDataProvider {
 
     private client: any;
     private isConnected: boolean = false;
+    private isConnecting: boolean = false;
     private activeSessions: Map<string, any> = new Map();
+    
+    // QUANT REQUIREMENT: Store entire state of the current forming candle
+    private activeCandles: Map<string, CanonicalCandle> = new Map();
+    
+    // SECURITY REQUIREMENT: Keep track of subscriptions to restore on reconnect
+    private subscriptionConfigs: Map<string, SubscriptionConfig> = new Map();
 
     public async connect(): Promise<void> {
-        if (this.isConnected) return;
+        if (this.isConnected || this.isConnecting) return;
+        this.isConnecting = true;
         
         return new Promise((resolve, reject) => {
             try {
@@ -39,14 +54,43 @@ export class TradingViewProvider implements MarketDataProvider {
                     logger.error({ err }, 'TradingView Client Error');
                 });
                 
+                this.client.onDisconnected(() => {
+                    logger.warn('TradingView Socket Disconnected. Reconnecting...');
+                    this.isConnected = false;
+                    this.isConnecting = false;
+                    this.handleReconnect();
+                });
+                
                 this.isConnected = true;
+                this.isConnecting = false;
                 logger.info('TradingView Provider connected.');
                 resolve();
             } catch (err) {
+                this.isConnecting = false;
                 logger.error({ err }, 'Failed to connect to TradingView');
                 reject(err);
             }
         });
+    }
+    
+    private async handleReconnect() {
+        // Simple Exponential Backoff logic can be implemented here. For now, reconnect after 5 seconds.
+        setTimeout(async () => {
+            try {
+                await this.connect();
+                // Restore all subscriptions
+                const configs = Array.from(this.subscriptionConfigs.values());
+                this.activeSessions.clear(); // Clear old sessions before recreating
+                for (const config of configs) {
+                    await this.subscribe(config.symbol, config.timeframe, config.onUpdate, config.indicatorsToAttach, true);
+                    // Slight delay to avoid burst on reconnect
+                    await new Promise(res => setTimeout(res, 500));
+                }
+            } catch (e) {
+                logger.error('Failed to reconnect, retrying later...');
+                this.handleReconnect();
+            }
+        }, 5000);
     }
 
     public async disconnect(): Promise<void> {
@@ -54,21 +98,29 @@ export class TradingViewProvider implements MarketDataProvider {
         this.client.end();
         this.isConnected = false;
         this.activeSessions.clear();
+        this.activeCandles.clear();
+        this.subscriptionConfigs.clear();
         logger.info('TradingView Provider disconnected.');
     }
 
-    // Subscribe with optional indicator study attachments (e.g. RSI, MACD)
     public async subscribe(
         symbol: string,
         timeframe: string,
         onUpdate: (candle: CanonicalCandle) => void,
-        indicatorsToAttach: string[] = ['STD;Relative_Strength_Index']
+        indicatorsToAttach: string[] = ['STD;Relative_Strength_Index'],
+        isReconnect: boolean = false
     ): Promise<void> {
         if (!this.isConnected) {
             throw new Error('Provider is not connected');
         }
 
         const sessionKey = `${symbol}_${timeframe}`;
+        
+        // Save config for reconnect purposes
+        if (!isReconnect) {
+            this.subscriptionConfigs.set(sessionKey, { symbol, timeframe, onUpdate, indicatorsToAttach });
+        }
+
         if (!this.activeSessions.has(sessionKey)) {
             const chart = new this.client.Session.Chart();
             chart.setMarket(symbol, { timeframe });
@@ -77,7 +129,6 @@ export class TradingViewProvider implements MarketDataProvider {
                 logger.error({ err }, `Chart Error for ${symbol}`);
             });
 
-            // Store attached studies
             const studies: any[] = [];
             const indicatorValues: Record<string, number> = {};
 
@@ -106,9 +157,42 @@ export class TradingViewProvider implements MarketDataProvider {
             chart.onUpdate(() => {
                 if (!chart.periods[0]) return;
                 const tvCandle = chart.periods[0];
+                const tickTime = tvCandle.time * 1000;
                 
-                // V2.0-012: Map to CanonicalCandle
-                const canonical: CanonicalCandle = {
+                const activeState = this.activeCandles.get(sessionKey);
+                
+                // QUANT ROLLOVER & DISCARD LOGIC
+                if (activeState) {
+                    if (tickTime < activeState.source_timestamp) {
+                        // DISCARD out-of-order/stale data
+                        return;
+                    }
+                    
+                    if (tickTime > activeState.source_timestamp) {
+                        // ROLLOVER: Emit previous candle as closed
+                        const closedCandle = { ...activeState, is_closed: true };
+                        onUpdate(closedCandle);
+                        
+                        // Proceed to create new state below
+                    } else {
+                        // UPDATE: Same timestamp, just update state and emit as forming
+                        const updatedState: CanonicalCandle = {
+                            ...activeState,
+                            open: tvCandle.open,
+                            high: tvCandle.high,
+                            low: tvCandle.low,
+                            close: tvCandle.close,
+                            volume: tvCandle.volume,
+                            indicators: { ...indicatorValues }
+                        };
+                        this.activeCandles.set(sessionKey, updatedState);
+                        onUpdate(updatedState);
+                        return;
+                    }
+                }
+                
+                // Create new forming candle state
+                const newState: CanonicalCandle = {
                     event_id: `${symbol}-${tvCandle.time}`,
                     provider: this.name,
                     provider_symbol: symbol,
@@ -119,7 +203,7 @@ export class TradingViewProvider implements MarketDataProvider {
                     timezone: 'Asia/Ho_Chi_Minh',
                     timeframe: timeframe,
                     
-                    source_timestamp: tvCandle.time * 1000,
+                    source_timestamp: tickTime,
                     event_timestamp: Date.now(),
                     received_at: Date.now(),
                     processed_at: Date.now(),
@@ -136,11 +220,11 @@ export class TradingViewProvider implements MarketDataProvider {
                     quality_status: 'REALTIME',
                     quality_score: 1.0,
 
-                    // Attached indicators snapshot
                     indicators: { ...indicatorValues }
                 };
                 
-                onUpdate(canonical);
+                this.activeCandles.set(sessionKey, newState);
+                onUpdate(newState);
             });
 
             this.activeSessions.set(sessionKey, { chart, studies });
@@ -162,6 +246,8 @@ export class TradingViewProvider implements MarketDataProvider {
                 try { active.chart.delete(); } catch (e) {}
             }
             this.activeSessions.delete(sessionKey);
+            this.activeCandles.delete(sessionKey);
+            this.subscriptionConfigs.delete(sessionKey);
             logger.info(`Stopped TV Chart Session for ${symbol} ${timeframe}`);
         }
     }

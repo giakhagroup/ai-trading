@@ -20,6 +20,7 @@ class TimeframeState:
         self.lows: List[float] = []
         self.volumes: List[float] = []
         self.timestamps: List[int] = []
+        self.event_ids: List[str] = []
 
     def append_candle(self, candle: CanonicalCandle):
         self.candles.append(candle)
@@ -28,6 +29,7 @@ class TimeframeState:
         self.lows.append(candle.low)
         self.volumes.append(candle.volume)
         self.timestamps.append(candle.source_timestamp)
+        self.event_ids.append(candle.event_id)
 
     def get_latest_candle(self) -> Optional[CanonicalCandle]:
         return self.candles[-1] if self.candles else None
@@ -87,11 +89,13 @@ class MTFManager:
             highs = state.highs[:idx]
             lows = state.lows[:idx]
             volumes = state.volumes[:idx]
+            event_ids = state.event_ids[:idx]
         else:
             closes = state.closes
             highs = state.highs
             lows = state.lows
             volumes = state.volumes
+            event_ids = state.event_ids
 
         if not closes:
             return {}
@@ -105,8 +109,13 @@ class MTFManager:
         sma20_vol = calculate_sma(volumes, 20)
 
         latest_idx = len(closes) - 1
+        latest_candle = state.candles[latest_idx]
+        tv_inds = latest_candle.indicators or {}
 
-        def safe_val(arr: List[float]) -> Optional[float]:
+        def safe_val(arr: List[float], fallback_key: str) -> Optional[float]:
+            # Use TV indicator if available
+            if fallback_key in tv_inds and tv_inds[fallback_key] is not None:
+                return float(tv_inds[fallback_key])
             if not arr or latest_idx >= len(arr):
                 return None
             val = arr[latest_idx]
@@ -115,16 +124,17 @@ class MTFManager:
         return {
             "close": closes[latest_idx],
             "volume": volumes[latest_idx],
-            "ema20": safe_val(ema20),
-            "ema50": safe_val(ema50),
-            "ema200": safe_val(ema200),
-            "rsi14": safe_val(rsi14),
-            "atr14": safe_val(atr14),
-            "macd": safe_val(macd["macd"]),
-            "macd_signal": safe_val(macd["signal"]),
-            "macd_hist": safe_val(macd["hist"]),
-            "sma20_vol": safe_val(sma20_vol),
-            "bar_count": len(closes)
+            "ema20": safe_val(ema20, "ema20"),
+            "ema50": safe_val(ema50, "ema50"),
+            "ema200": safe_val(ema200, "ema200"),
+            "rsi14": safe_val(rsi14, "rsi14"),
+            "atr14": safe_val(atr14, "atr14"),
+            "macd": safe_val(macd["macd"] if macd else [], "macd"),
+            "macd_signal": safe_val(macd["signal"] if macd else [], "macd_signal"),
+            "macd_hist": safe_val(macd["hist"] if macd else [], "macd_hist"),
+            "sma20_vol": safe_val(sma20_vol, "sma20_vol"),
+            "bar_count": len(closes),
+            "event_id": event_ids[latest_idx] if latest_idx < len(event_ids) else "unknown_event_id"
         }
 
     def get_trend_state(self, timeframe: str = "60", as_of_timestamp: Optional[int] = None) -> str:

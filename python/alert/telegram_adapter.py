@@ -59,4 +59,8 @@ class TelegramAdapter:
         if matched:
             msg += f"<b>Criteria:</b> {', '.join(matched)}\n"
             
+        correlation_id = result.get("correlation_id")
+        if correlation_id:
+            msg += f"\n<i>#Trace: {correlation_id}</i>"
+            
         return msg

@@ -23,7 +23,10 @@ export class SubscriptionAggregator {
         
         if (!this.subscribers.has(key)) {
             this.subscribers.set(key, new Set());
-            // TODO: Actually call provider.subscribe(...) here since it's the first listener
+            // Call provider.subscribe since it's the first listener
+            this.provider.subscribe(symbol, timeframe, (candle) => {
+                this.onDataReceived(symbol, timeframe, candle);
+            });
         }
         
         this.subscribers.get(key)!.add(callback);
@@ -38,7 +41,8 @@ export class SubscriptionAggregator {
             
             if (callbacks.size === 0) {
                 this.subscribers.delete(key);
-                // TODO: Actually call provider.unsubscribe(...) here since no one is listening anymore
+                // Call provider.unsubscribe since no one is listening anymore
+                this.provider.unsubscribe(symbol, timeframe);
             }
         }
     }
