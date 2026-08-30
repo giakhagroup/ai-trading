@@ -1,0 +1,30 @@
+{
+    "provider": "TradingViewProvider",
+    "verifiedCapabilities": {
+        "multiSymbolMultiplexing": {
+            "status": "VERIFIED",
+            "evidence": "POC-1A demonstrated a single WebSocket connection successfully sustaining 100 concurrent chart sessions without triggering disconnects, 429 rate limits, or significant latency.",
+            "metrics": {
+                "maxSymbolsTested": 100,
+                "eventLoss": 0,
+                "http429": 0
+            }
+        },
+        "pacingRateLimits": {
+            "status": "VERIFIED",
+            "evidence": "A subscription pacing of 500ms delay between chart.setMarket() calls is sufficient to avoid upfront rate-limiting."
+        },
+        "invalidSymbolTolerance": {
+            "status": "VERIFIED",
+            "evidence": "Subscribing to invalid symbols triggers internal chart.onError but does not penalize or terminate the parent WebSocket connection."
+        },
+        "sessionBounds": {
+            "status": "UNKNOWN",
+            "evidence": "Pending POC. Currently treating all events as CONTINUOUS."
+        },
+        "reconnectionScaling": {
+            "status": "UNKNOWN",
+            "evidence": "Pending POC. Need to verify how fast 100 symbols can be restored upon a forced socket closure."
+        }
+    }
+}

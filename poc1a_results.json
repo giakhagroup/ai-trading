@@ -1,0 +1,47 @@
+[
+  {
+    "targetCapacity": 30,
+    "uptime_ms": 30088,
+    "chart_sessions_active": 30,
+    "avg_subscription_latency_ms": 0.6666666666666666,
+    "event_loss": 0,
+    "duplicate_events": 0,
+    "out_of_order_events": 0,
+    "reconnects": 0,
+    "provider_errors": 0,
+    "invalid_symbols": 0,
+    "http_429_or_equivalent": 0,
+    "max_cpu_percent": 0.49,
+    "max_memory_mb": 13
+  },
+  {
+    "targetCapacity": 50,
+    "uptime_ms": 40073,
+    "chart_sessions_active": 50,
+    "avg_subscription_latency_ms": 0.48,
+    "event_loss": 0,
+    "duplicate_events": 0,
+    "out_of_order_events": 0,
+    "reconnects": 0,
+    "provider_errors": 0,
+    "invalid_symbols": 0,
+    "http_429_or_equivalent": 0,
+    "max_cpu_percent": 0.25,
+    "max_memory_mb": 14
+  },
+  {
+    "targetCapacity": 100,
+    "uptime_ms": 65141,
+    "chart_sessions_active": 100,
+    "avg_subscription_latency_ms": 0.54,
+    "event_loss": 0,
+    "duplicate_events": 0,
+    "out_of_order_events": 0,
+    "reconnects": 0,
+    "provider_errors": 0,
+    "invalid_symbols": 0,
+    "http_429_or_equivalent": 0,
+    "max_cpu_percent": 0.44,
+    "max_memory_mb": 18
+  }
+]

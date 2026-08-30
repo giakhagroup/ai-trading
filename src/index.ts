@@ -1,4 +1,7 @@
 import { TradingViewProvider } from './providers/TradingViewProvider';
+import { SymbolResolutionRegistry } from './core/SymbolResolutionRegistry';
+import { TradingViewErrorClassifier } from './core/TradingViewErrorClassifier';
+import { BackoffPolicy } from './core/BackoffPolicy';
 import { SubscriptionAggregator } from './core/SubscriptionAggregator';
 import { QuantBridge } from './core/QuantBridge';
 import { MarketScannerBootstrapper } from './core/MarketScannerBootstrapper';
@@ -28,8 +31,12 @@ async function main() {
         logger.info('Python Quant Engine is reachable.');
     }
 
-    // 2. Initialize TradingView Provider
-    const provider = new TradingViewProvider();
+    // 2. Initialize Resilience Components & TradingView Provider
+    const registry = new SymbolResolutionRegistry({ quarantineTTLMs: 300000 });
+    const errorClassifier = new TradingViewErrorClassifier();
+    const backoffPolicy = new BackoffPolicy({ baseDelayMs: 1000, maxDelayMs: 60000 });
+    
+    const provider = new TradingViewProvider({ registry, errorClassifier, backoffPolicy });
     
     // 3. Connect to Provider
     try {
@@ -54,6 +61,12 @@ async function main() {
     await bootstrapper.start('1H');
 
     logger.info('Gateway successfully initialized and running.');
+    
+    // Periodically log observability metrics
+    setInterval(() => {
+        const metrics = provider.getMetrics();
+        logger.info({ metrics }, 'Gateway Observability Metrics');
+    }, 60000);
     
     // Graceful Shutdown handling
     process.on('SIGINT', async () => {
