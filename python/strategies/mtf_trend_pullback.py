@@ -1,6 +1,6 @@
 import uuid
 from typing import Optional
-from models import CanonicalCandle, CandidateSignal, SignalDirection, SignalStatus
+from models import CanonicalCandle, CandidateSignal, SignalDirection, SignalStatus, IndicatorQuality
 from strategies.base import IStrategy
 from engine.mtf_manager import MTFManager
 
@@ -36,10 +36,14 @@ class MTFTrendPullbackStrategy(IStrategy):
         # 1. Query Macro Trend on Higher Timeframe (strictly as of candle.source_timestamp)
         htf_trend = self.mtf.get_trend_state(self.htf, as_of_timestamp=candle.source_timestamp)
         if htf_trend != "UPTREND":
-            return None # Filter: Do not enter if HTF is not clear uptrend
+            print(f"Candle {candle.source_timestamp}, htf_trend: {htf_trend}"); return None
 
         # 2. Query Lower Timeframe indicators
-        ltf_inds = self.mtf.get_indicators(self.ltf, as_of_timestamp=candle.source_timestamp)
+        payload = self.mtf.get_indicators(self.ltf, as_of_timestamp=candle.source_timestamp)
+        if not payload or payload.quality in (IndicatorQuality.STALE, IndicatorQuality.MISSING, IndicatorQuality.WARMUP):
+            return None
+
+        ltf_inds = payload.values
         rsi = ltf_inds.get("rsi14")
         atr = ltf_inds.get("atr14") or (candle.high - candle.low)
 

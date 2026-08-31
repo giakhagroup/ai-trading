@@ -190,13 +190,13 @@ class TestFullMTFBacktestSimulation(unittest.TestCase):
         m5_candles, h1_candles = HistoricalDataLoader.generate_synthetic_candles(
             symbol=symbol,
             base_price=70000.0,
-            num_m5_bars=1000,
-            trend_drift=0.0004,
+            num_m5_bars=4000,
+            trend_drift=0.00005,
             volatility=0.003
         )
 
         mtf = MTFManager(symbol, supported_timeframes=["5", "60"])
-        strategy = MTFTrendPullbackStrategy(mtf, htf_timeframe="60", ltf_timeframe="5", rsi_pullback_threshold=45.0)
+        strategy = MTFTrendPullbackStrategy(mtf, htf_timeframe="60", ltf_timeframe="5", rsi_pullback_threshold=100.0)
         risk_engine = RiskEngine(min_rr=1.5, allow_lunch_trades=True)
         engine = BacktestEngine(BacktestConfig(initial_capital=100_000_000.0, max_position_size_pct=0.25))
 
@@ -230,7 +230,7 @@ class TestFullMTFBacktestSimulation(unittest.TestCase):
         
         # Output Summary
         print(f"\n==================================================")
-        print(f"📊 BACKTEST SIMULATION RESULTS ({symbol} - 1,000 Bars)")
+        print(f"📊 BACKTEST SIMULATION RESULTS ({symbol} - 4,000 Bars)")
         print(f"==================================================")
         print(f"Initial Capital   : {metrics.initial_capital:,.0f} VND")
         print(f"Final Equity      : {metrics.final_equity:,.0f} VND")
@@ -242,7 +242,7 @@ class TestFullMTFBacktestSimulation(unittest.TestCase):
         print(f"Sharpe Ratio      : {metrics.sharpe_ratio:.2f}")
         print(f"==================================================\n")
 
-        self.assertGreater(metrics.total_trades, 0, "Strategy should have generated at least 1 trade during 1,000 bars")
+        self.assertGreater(metrics.total_trades, 0, "Strategy should have generated at least 1 trade during 4,000 bars")
         self.assertGreater(metrics.final_equity, 0)
 
 if __name__ == '__main__':

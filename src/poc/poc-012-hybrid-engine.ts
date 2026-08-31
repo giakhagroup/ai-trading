@@ -46,8 +46,7 @@ async function runHybridStream() {
                     console.log(`  -> ⚠️ Python REJECTED SIGNALS: ${JSON.stringify(response.rejected)}`);
                 }
             }
-        },
-        ['STD;Relative_Strength_Index']
+        }
     );
 
     // Run for 15 seconds then finish

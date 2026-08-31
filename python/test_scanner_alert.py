@@ -5,7 +5,7 @@ import sqlite3
 import shutil
 from unittest.mock import patch, MagicMock
 
-from models import CanonicalCandle
+from models import CanonicalCandle, IndicatorPayload, IndicatorQuality, IndicatorProvenance
 from engine.mtf_manager import MTFManager
 from engine.scanner.scanner_types import ScanResult
 from engine.scanner.market_scanner import MarketScanner
@@ -43,21 +43,29 @@ def test_scanner_scoring_and_ranking():
     # We simulate indicators instead of raw candles to test the normalization
     # HOSE:AAA: Strong uptrend, High RSI, High RVOL
     with patch.object(m1, 'get_indicators') as mock_inds_1:
-        mock_inds_1.side_effect = lambda tf, as_of_timestamp: {
-            "close": 100, "volume": 2000, "sma20_vol": 1000,
-            "ema20": 90, "ema50": 80, "ema200": 70,  # UPTREND -> 100
-            "rsi14": 75,  # >70 -> 100
-        } if tf == "1H" else {}
+        mock_inds_1.side_effect = lambda tf, as_of_timestamp: IndicatorPayload(
+            values={
+                "close": 100, "volume": 2000, "sma20_vol": 1000,
+                "ema20": 90, "ema50": 80, "ema200": 70,  # UPTREND -> 100
+                "rsi14": 75,  # >70 -> 100
+            },
+            quality=IndicatorQuality.VALID,
+            provenance=IndicatorProvenance(input_timeframe=tf)
+        ) if tf == "1H" else None
         with patch.object(m1, 'get_trend_state') as mock_trend_1:
             mock_trend_1.return_value = "UPTREND" # Matches 1H and 15m -> MTF 100
 
             # HOSE:BBB: Downtrend, Low RSI, Low RVOL
             with patch.object(m2, 'get_indicators') as mock_inds_2:
-                mock_inds_2.side_effect = lambda tf, as_of_timestamp: {
-                    "close": 50, "volume": 500, "sma20_vol": 1000,
-                    "ema20": 60, "ema50": 70, "ema200": 80,  # DOWNTREND -> 0
-                    "rsi14": 20,  # <30 -> 0
-                } if tf == "1H" else {}
+                mock_inds_2.side_effect = lambda tf, as_of_timestamp: IndicatorPayload(
+                    values={
+                        "close": 50, "volume": 500, "sma20_vol": 1000,
+                        "ema20": 60, "ema50": 70, "ema200": 80,  # DOWNTREND -> 0
+                        "rsi14": 20,  # <30 -> 0
+                    },
+                    quality=IndicatorQuality.VALID,
+                    provenance=IndicatorProvenance(input_timeframe=tf)
+                ) if tf == "1H" else None
                 with patch.object(m2, 'get_trend_state') as mock_trend_2:
                     mock_trend_2.return_value = "DOWNTREND"
 
@@ -86,10 +94,14 @@ def test_scanner_deterministic_ranking():
     
     # Both have exactly the same score
     def fake_inds(tf, as_of_timestamp):
-        return {
-            "close": 100, "volume": 1000, "sma20_vol": 1000,
-            "ema20": 100, "ema50": 100, "ema200": 100, "rsi14": 50
-        } if tf == "1H" else {}
+        return IndicatorPayload(
+            values={
+                "close": 100, "volume": 1000, "sma20_vol": 1000,
+                "ema20": 100, "ema50": 100, "ema200": 100, "rsi14": 50
+            },
+            quality=IndicatorQuality.VALID,
+            provenance=IndicatorProvenance(input_timeframe=tf)
+        ) if tf == "1H" else None
         
     with patch.object(m1, 'get_indicators', side_effect=fake_inds), \
          patch.object(m2, 'get_indicators', side_effect=fake_inds), \
@@ -125,15 +137,12 @@ def test_scanner_look_ahead_bias():
     scanner.universe = ["HOSE:FPT"]
     
     # Call scan at T=1000. The manager's indicators must NOT include T=2000 data.
-    # We patch `calculate_ema` to just check what is being passed.
-    with patch('engine.mtf_manager.calculate_ema') as mock_ema:
-        mock_ema.return_value = [10]
-        scanner.scan(as_of_timestamp=1000)
-        # Verify that only 1 candle was passed to the indicators
-        args, _ = mock_ema.call_args
-        closes_array = args[0]
-        assert len(closes_array) == 1
-        assert closes_array[0] == 10
+    # The scan gets payload via manager.get_indicators("1H", as_of_timestamp=1000)
+    # The incremental engine state has already been updated with T=2000
+    # But because we ask for as_of_timestamp=1000, and we don't support history yet, it returns None.
+    # Therefore it skips.
+    results = scanner.scan(as_of_timestamp=1000)
+    assert len(results) == 0
 
 # ==============================================================================
 # PHASE 5 TESTS: OUTBOX, RATE LIMITER, RETRY

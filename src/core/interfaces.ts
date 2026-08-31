@@ -27,7 +27,7 @@ export interface MarketDataProvider {
     disconnect(): Promise<void>;
     
     // Thêm các hàm nghiệp vụ khi cần thiết (subscribe, getHistorical, ...)
-    subscribe(symbol: string, timeframe: string, onUpdate: (candle: CanonicalCandle) => void, indicatorsToAttach?: string[], isReconnect?: boolean): Promise<void>;
+    subscribe(symbol: string, timeframe: string, onUpdate: (candle: CanonicalCandle) => void, isReconnect?: boolean): Promise<void>;
     unsubscribe(symbol: string, timeframe: string): void;
 }
 

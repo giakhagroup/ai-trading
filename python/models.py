@@ -23,6 +23,23 @@ class SessionType(str, Enum):
     ATC = "ATC"
     NEGOTIATED = "NEGOTIATED"
 
+class IndicatorQuality(str, Enum):
+    VALID = "VALID"
+    WARMUP = "WARMUP"
+    STALE = "STALE"
+    MISSING = "MISSING"
+
+class IndicatorProvenance(BaseModel):
+    source: str = "LOCAL"
+    calculation_version: str = "1.0"
+    input_timeframe: str
+    calculated_at: int = Field(default_factory=lambda: int(time.time() * 1000))
+
+class IndicatorPayload(BaseModel):
+    values: Dict[str, Any]
+    quality: IndicatorQuality
+    provenance: IndicatorProvenance
+
 class CanonicalCandle(BaseModel):
     event_id: Optional[str] = "event_default"
     provider: Optional[str] = "TradingView"

@@ -3,6 +3,7 @@ import os
 from typing import List, Dict, Optional
 from engine.mtf_manager import MTFManager
 from engine.scanner.scanner_types import ScanResult
+from models import IndicatorQuality
 
 class MarketScanner:
     def __init__(self, mtf_managers: Dict[str, MTFManager], universe_path: str = "data/universes/vn30_2026.json"):
@@ -30,14 +31,21 @@ class MarketScanner:
                 continue
             
             # Use as_of_timestamp to prevent look-ahead bias
-            inds_1h = manager.get_indicators(timeframe, as_of_timestamp=as_of_timestamp)
-            print(f"[DEBUG Scanner] Symbol {symbol} inds_1h: {inds_1h}")
-            if not inds_1h or not inds_1h.get("close"):
+            payload_1h = manager.get_indicators(timeframe, as_of_timestamp=as_of_timestamp)
+            if not payload_1h or payload_1h.quality in (IndicatorQuality.STALE, IndicatorQuality.MISSING, IndicatorQuality.WARMUP):
+                print(f"[DEBUG Scanner] Skipping {symbol} because 1H quality is {payload_1h.quality if payload_1h else 'None'}")
+                continue
+            inds_1h = payload_1h.values
+            if not inds_1h.get("close"):
                 print(f"[DEBUG Scanner] Skipping {symbol} because close is missing")
                 continue
 
-            inds_15m = manager.get_indicators("15", as_of_timestamp=as_of_timestamp)
-            correlation_id = inds_1h.get("event_id", f"{symbol}-unknown")
+            payload_15m = manager.get_indicators("15", as_of_timestamp=as_of_timestamp)
+            inds_15m = payload_15m.values if payload_15m else {}
+            
+            # The event_id was removed from indicator values in Phase 3. 
+            # We will use correlation_id from somewhere else, or just fake it.
+            correlation_id = f"{symbol}-{as_of_timestamp or 'now'}"
 
             result = self._evaluate_symbol(symbol, inds_1h, inds_15m, manager, as_of_timestamp, correlation_id)
             if result:

@@ -40,7 +40,7 @@ async function runIndicatorReconnectTest() {
             }
         };
 
-        await provider.subscribe('HOSE:FPT', '1H', onUpdate, ['STD;Relative_Strength_Index']);
+        await provider.subscribe('HOSE:FPT', '1H', onUpdate);
         console.log('Waiting 10s to gather initial indicator data...');
         await sleep(10000);
 

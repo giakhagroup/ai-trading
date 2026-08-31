@@ -24,7 +24,6 @@ interface SubscriptionConfig {
     symbol: string;
     timeframe: string;
     onUpdate: (candle: CanonicalCandle) => void;
-    indicatorsToAttach: string[];
 }
 
 export interface ProviderMetrics {
@@ -176,7 +175,7 @@ export class TradingViewProvider implements MarketDataProvider {
                 continue;
             }
             try {
-                await this.subscribe(config.symbol, config.timeframe, config.onUpdate, config.indicatorsToAttach, true);
+                await this.subscribe(config.symbol, config.timeframe, config.onUpdate, true);
                 // Stagger restoration
                 await new Promise(res => setTimeout(res, 500));
             } catch (err) {
@@ -201,7 +200,6 @@ export class TradingViewProvider implements MarketDataProvider {
         symbol: string,
         timeframe: string,
         onUpdate: (candle: CanonicalCandle) => void,
-        indicatorsToAttach: string[] = ['STD;Relative_Strength_Index'],
         isReconnect: boolean = false
     ): Promise<void> {
         if (this.state === ConnectionState.DISCONNECTED) {
@@ -211,7 +209,7 @@ export class TradingViewProvider implements MarketDataProvider {
         const sessionKey = `${symbol}_${timeframe}`;
         
         if (!isReconnect) {
-            this.subscriptionConfigs.set(sessionKey, { symbol, timeframe, onUpdate, indicatorsToAttach });
+            this.subscriptionConfigs.set(sessionKey, { symbol, timeframe, onUpdate });
         }
 
         if (this.registry.isQuarantined(symbol)) {
@@ -239,32 +237,6 @@ export class TradingViewProvider implements MarketDataProvider {
                     logger.warn({ err }, `Transient/Unknown error on chart ${symbol}`);
                 }
             });
-
-            const studies: any[] = [];
-            const indicatorValues: Record<string, number> = {};
-
-            for (const indicatorName of indicatorsToAttach) {
-                try {
-                    let indicator;
-                    if (indicatorName.startsWith('STD;') || indicatorName.includes('@')) {
-                        indicator = new TradingView.BuiltInIndicator(indicatorName);
-                    } else {
-                        indicator = await TradingView.getIndicator(indicatorName);
-                    }
-                    const study = new chart.Study(indicator);
-                    study.onUpdate(() => {
-                        if (study.periods && study.periods[0]) {
-                            const val = study.periods[0].Plot ?? study.periods[0].RSI ?? study.periods[0].val ?? study.periods[0].Volume;
-                            indicatorValues['RSI'] = typeof val === 'number' ? val : 30.0;
-                        }
-                    });
-                    studies.push(study);
-                    // logger.info(`Attached indicator study ${indicatorName} to ${symbol}`);
-                } catch (e: any) {
-                    logger.warn(`Could not attach indicator ${indicatorName} to ${symbol}: ${e.message}`);
-                }
-            }
-
             chart.onUpdate(() => {
                 if (this.registry.getState(symbol) !== SymbolState.ACTIVE) {
                     this.registry.markState(symbol, SymbolState.ACTIVE);
@@ -305,7 +277,7 @@ export class TradingViewProvider implements MarketDataProvider {
                             low: tvCandle.low,
                             close: tvCandle.close,
                             volume: tvCandle.volume,
-                            indicators: { ...indicatorValues }
+                            indicators: {}
                         };
                         this.activeCandles.set(sessionKey, updatedState);
                         this.metrics.events_emitted++;
@@ -343,7 +315,7 @@ export class TradingViewProvider implements MarketDataProvider {
                     quality_status: 'REALTIME',
                     quality_score: 1.0,
 
-                    indicators: { ...indicatorValues }
+                    indicators: {}
                 };
                 
                 this.activeCandles.set(sessionKey, newState);
@@ -351,7 +323,7 @@ export class TradingViewProvider implements MarketDataProvider {
                 onUpdate(newState);
             });
 
-            this.activeSessions.set(sessionKey, { chart, studies });
+            this.activeSessions.set(sessionKey, { chart });
             logger.info(`Started TV Chart Session for ${symbol} ${timeframe}`);
         }
     }
@@ -365,11 +337,6 @@ export class TradingViewProvider implements MarketDataProvider {
         const active = this.activeSessions.get(sessionKey);
         
         if (active) {
-            if (active.studies) {
-                for (const study of active.studies) {
-                    try { study.remove(); } catch (e) {}
-                }
-            }
             if (active.chart) {
                 try { active.chart.delete(); } catch (e) {}
             }
