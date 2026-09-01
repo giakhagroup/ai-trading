@@ -8,11 +8,45 @@ from engine.scanner.scanner_coalescer import ScannerCoalescer
 from engine.scanner.candle_ingestion_service import CandleIngestionService
 from engine.scanner.market_scanner import MarketScanner
 
-app = FastAPI(title="AI Trading Gateway API - Phase 5A")
+import os
+import threading
+from dotenv import load_dotenv
+
+load_dotenv()
+
+app = FastAPI(title="AI Trading Gateway API - Phase 8B")
 
 # Initialize Domain Services
 state_store = MarketStateStore(["15", "60"])
 scanner = MarketScanner(state_store.managers, "data/universes/vn30_2026.json")
+
+# Initialize Alert System
+from alert.outbox_models import OutboxRepository
+from alert.alert_policy import AlertPolicy
+from alert.rate_limiter import RateLimiter
+from alert.telegram_adapter import TelegramAdapter
+from alert.alert_outbox_worker import AlertOutboxWorker
+
+outbox_repo = OutboxRepository("data/outbox.db")
+alert_policy = AlertPolicy(outbox_repo)
+telegram_adapter = TelegramAdapter()
+rate_limiter = RateLimiter()
+outbox_worker = AlertOutboxWorker(outbox_repo, telegram_adapter, rate_limiter)
+worker_thread = None
+
+@app.on_event("startup")
+def startup_event():
+    global worker_thread
+    print("[AlertSystem] Starting Outbox Worker...")
+    worker_thread = threading.Thread(target=outbox_worker.start, daemon=True)
+    worker_thread.start()
+
+@app.on_event("shutdown")
+def shutdown_event():
+    print("[AlertSystem] Stopping Outbox Worker...")
+    outbox_worker.stop()
+    if worker_thread:
+        worker_thread.join(timeout=2)
 
 # In-memory storage for latest scan results
 latest_scan_results = []
@@ -31,6 +65,11 @@ async def perform_scan():
     latest_scan_results = results
     last_scan_time = now
     print(f"[Scanner] Scan complete. Yielded {len(results)} valid signals.")
+    
+    # Phase 8B: Pass to Alert Policy
+    event = alert_policy.evaluate_and_emit(results, current_time=int(now/1000))
+    if event:
+        print(f"[AlertSystem] Emitted AlertEvent {event.signal_id} with {len(event.payload['items'])} items")
 
 coalescer = ScannerCoalescer(scan_callback=perform_scan, debounce_ms=1000)
 ingestion_service = CandleIngestionService(state_store, coalescer)

@@ -128,5 +128,11 @@ class MarketScanner:
             volume=vol,
             ema20=ema20,
             ema50=ema50,
-            ema200=ema200
+            ema200=ema200,
+            total_score=round(total_score, 2),
+            trend_score=round(trend_score, 2),
+            momentum_score=round(momentum_score, 2),
+            mtf_score=round(mtf_score, 2),
+            trend_state=trend_state,
+            data_quality="VALID"
         )

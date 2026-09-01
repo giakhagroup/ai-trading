@@ -30,6 +30,7 @@ class OutboxRepository:
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+            cursor.execute('PRAGMA journal_mode=WAL;')
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS outbox_events (
                     alert_id INTEGER PRIMARY KEY AUTOINCREMENT,
