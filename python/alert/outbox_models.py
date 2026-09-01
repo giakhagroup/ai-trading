@@ -20,6 +20,7 @@ class AlertEvent(BaseModel):
     retry_count: int = 0
     next_retry_at: int = 0
     created_at: int = 0
+    rule_version: str = "v1.0"
 
 class OutboxRepository:
     def __init__(self, db_path: str = "data/outbox.db"):
@@ -39,9 +40,39 @@ class OutboxRepository:
                     retry_count INTEGER DEFAULT 0,
                     next_retry_at INTEGER DEFAULT 0,
                     created_at INTEGER DEFAULT 0,
+                    rule_version TEXT NOT NULL,
                     UNIQUE(signal_id, destination)
                 )
             ''')
+            # Table for cooldown tracking
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS alert_cooldowns (
+                    symbol TEXT PRIMARY KEY,
+                    last_alert_at INTEGER NOT NULL
+                )
+            ''')
+            conn.commit()
+
+    def get_cooldowns(self, symbols: List[str]) -> Dict[str, int]:
+        if not symbols:
+            return {}
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            placeholders = ','.join('?' * len(symbols))
+            cursor.execute(f'SELECT symbol, last_alert_at FROM alert_cooldowns WHERE symbol IN ({placeholders})', symbols)
+            return {row[0]: row[1] for row in cursor.fetchall()}
+
+    def update_cooldowns(self, symbols: List[str], timestamp: int):
+        if not symbols:
+            return
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            for sym in symbols:
+                cursor.execute('''
+                    INSERT INTO alert_cooldowns (symbol, last_alert_at)
+                    VALUES (?, ?)
+                    ON CONFLICT(symbol) DO UPDATE SET last_alert_at=excluded.last_alert_at
+                ''', (sym, timestamp))
             conn.commit()
 
     def add_event(self, event: AlertEvent) -> bool:
@@ -51,8 +82,8 @@ class OutboxRepository:
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO outbox_events 
-                    (signal_id, destination, payload, status, created_at, next_retry_at, retry_count)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (signal_id, destination, payload, status, created_at, next_retry_at, retry_count, rule_version)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     event.signal_id,
                     event.destination,
@@ -60,7 +91,8 @@ class OutboxRepository:
                     event.status.value,
                     event.created_at or int(time.time()),
                     event.next_retry_at,
-                    event.retry_count
+                    event.retry_count,
+                    event.rule_version
                 ))
                 conn.commit()
                 return True
@@ -73,7 +105,7 @@ class OutboxRepository:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT alert_id, signal_id, destination, payload, status, retry_count, next_retry_at, created_at
+                SELECT alert_id, signal_id, destination, payload, status, retry_count, next_retry_at, created_at, rule_version
                 FROM outbox_events
                 WHERE status IN ('PENDING', 'RETRYING') AND next_retry_at <= ?
                 ORDER BY created_at ASC
@@ -90,7 +122,8 @@ class OutboxRepository:
                     status=AlertStatus(row[4]),
                     retry_count=row[5],
                     next_retry_at=row[6],
-                    created_at=row[7]
+                    created_at=row[7],
+                    rule_version=row[8]
                 ))
             return events
 

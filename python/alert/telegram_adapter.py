@@ -41,26 +41,28 @@ class TelegramAdapter:
             return False, 0, {"error": str(e)}
 
     @staticmethod
-    def format_scan_result(result: dict) -> str:
-        """Format ScanResult into a Telegram-friendly HTML message."""
-        symbol = result.get("symbol", "N/A")
-        score = result.get("score", 0)
-        trend = result.get("trend", "UNKNOWN")
-        rvol = result.get("rvol", 0)
-        matched = result.get("matched_criteria", [])
+    def format_scan_result(payload: dict) -> str:
+        """Format AlertEvent payload into a Telegram-friendly HTML message."""
+        items = payload.get("items", [])
+        if not items:
+            return "<i>No data available</i>"
+
+        import datetime
+        now_str = datetime.datetime.now().strftime("%H:%M")
         
-        icon = "🟢" if trend == "UPTREND" else "🔴" if trend == "DOWNTREND" else "⚪"
+        msg = f"🚨 <b>AI Trading Alert</b>\n"
+        msg += f"{now_str} — VN30\n\n"
         
-        msg = f"<b>{icon} AI TRADING ALERT | {symbol}</b>\n\n"
-        msg += f"<b>Score:</b> {score}/100\n"
-        msg += f"<b>Trend:</b> {trend}\n"
-        msg += f"<b>RVOL:</b> {rvol}x\n"
-        
-        if matched:
-            msg += f"<b>Criteria:</b> {', '.join(matched)}\n"
+        for idx, item in enumerate(items, 1):
+            symbol = item.get("symbol", "").replace("HOSE:", "")
+            score = item.get("total_score", 0)
+            trend = item.get("trend", "UNKNOWN")
             
-        correlation_id = result.get("correlation_id")
-        if correlation_id:
-            msg += f"\n<i>#Trace: {correlation_id}</i>"
+            trend_score = item.get("trend_score", 0)
+            mom_score = item.get("momentum_score", 0)
+            mtf_score = item.get("mtf_score", 0)
             
-        return msg
+            msg += f"{idx}. {symbol}  Score {score}  {trend}\n"
+            msg += f"   Trend {trend_score} | Momentum {mom_score} | MTF {mtf_score}\n\n"
+            
+        return msg.strip()

@@ -16,3 +16,11 @@ class ScanResult(BaseModel):
     ema20: Optional[float] = None
     ema50: Optional[float] = None
     ema200: Optional[float] = None
+
+    # Phase 8A specific fields for alert thresholding
+    total_score: float = 0
+    trend_score: float = 0
+    momentum_score: float = 0
+    mtf_score: float = 0
+    trend_state: str = "UNKNOWN"
+    data_quality: str = "VALID"
